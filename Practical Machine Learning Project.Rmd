@@ -1,0 +1,105 @@
+---
+output:
+  html_document: default
+---
+#Title:  Practical Machine Learning Project
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#I. Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+#II. Dataset
+Source:  http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+#III.  Environment Preparation
+```{r}
+#Loading libraries
+library(lattice)
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(gbm)
+```
+
+#IV.  Getting the Data.
+```{r}
+# set the URL for the download
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlValid  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+Train <- read.csv(url(UrlTrain), header=TRUE)
+Valid <- read.csv(url(UrlValid), header=TRUE)
+```
+We will split the Training data into 70% training set and 30% test set.
+```{r}
+set.seed(500)
+inTrain <- createDataPartition(Train$classe, p=0.7, list=FALSE)
+TrainSet <- Train[inTrain,]
+TestSet <- Train[-inTrain,]
+```
+
+#V.  Cleaning the Data.
+```{r}
+str(TrainSet)
+```
+We removed the first 7 variables, which are identifier variables.
+```{r}
+TrainSet1 <- TrainSet[,-c(1:7)]
+```
+We removed the variables with near zero variance.
+```{r}
+nzvTrain <- nearZeroVar(TrainSet1)
+TrainSet2 <- TrainSet1[,-nzvTrain]
+```
+We removed the variables with more than 90% NAs or missing values.
+```{r}
+remTrain <- which(colSums(is.na(TrainSet2)|TrainSet2%in%"")>0.8*dim(TrainSet2)[1])
+TrainSetClean <- TrainSet2[,-remTrain] 
+```
+
+#VI.  Building the models.
+We will use cross validation with k=10.  
+```{r}
+cv_Train <- trainControl(method="cv", number=10)
+```
+
+We will use three different methods to build our models - classification tree, gradient boosting method and random forest.
+
+##A.  Classification Tree
+```{r}
+ct_model <- train(classe ~ ., data=TrainSetClean, method="rpart", trControl=cv_Train)
+ct_pred <- predict(ct_model, TestSet)
+ct_acc <- confusionMatrix(ct_pred, TestSet$classe)
+ct_acc
+```
+The model using classification tree has low accuracy at 0.49 and the out-of-sample error is high at 0.51.
+
+##B.  Gradient Boosting Method
+```{r}
+gbm_model <- train(classe ~., data=TrainSetClean, method="gbm", trControl=cv_Train, verbose=FALSE)
+gbm_pred <- predict(gbm_model, TestSet)
+gbm_acc <- confusionMatrix(gbm_pred, TestSet$classe)
+gbm_acc
+```
+The accuracy of this model using gradient boosting method is 0.96 with an out-of-sample error at 0.04.
+
+##C.  Random Forest
+```{r}
+rf_mod <- train(classe ~ ., data=TrainSetClean, method="rf", trControl=cv_Train, verbose=FALSE)
+rf_pred <- predict(rf_mod, TestSet)
+rf_acc <- confusionMatrix(rf_pred, TestSet$classe)
+rf_acc
+```
+The accuracy of this model using random forest method is 0.99 with an out-of-sample error at 0.01.
+
+#VII.  Conclusion
+The model using the random forest method yields the highest accuracy.  We will use this to predict the Validation data set.
+```{r}
+Valid_pred <- predict(rf_mod, Valid)
+Valid_pred
+```
+
+
+Reference:
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
